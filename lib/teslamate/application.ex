@@ -22,15 +22,17 @@ defmodule TeslaMate.Application do
     case Application.get_env(:teslamate, :import_directory) do
       nil ->
         [
+          {Registry, keys: :unique, name: TeslaMate.Registry},
           TeslaMate.Repo,
           TeslaMate.Vault,
           TeslaMate.HTTP,
-          TeslaMate.Api,
+          TeslaMate.Tenants,
+          # TeslaMate.Api, # 现在是按需启动
           # TeslaMate.Updater,
           {Phoenix.PubSub, name: TeslaMate.PubSub},
           # TeslaMateWeb.Endpoint,
           TeslaMate.Terrain,
-          TeslaMate.Vehicles,
+          # TeslaMate.Vehicles,
           # if(mqtt_config != nil, do: {TeslaMate.Mqtt, mqtt_config}),
           TeslaMate.Repair
         ]
@@ -38,10 +40,12 @@ defmodule TeslaMate.Application do
 
       import_directory ->
         [
+          {Registry, keys: :unique, name: TeslaMate.Registry},
           TeslaMate.Repo,
           TeslaMate.Vault,
           TeslaMate.HTTP,
-          TeslaMate.Api,
+          TeslaMate.Tenants,
+          # TeslaMate.Api, # 现在是按需启动
           # TeslaMate.Updater,
           {Phoenix.PubSub, name: TeslaMate.PubSub},
           # TeslaMateWeb.Endpoint,
