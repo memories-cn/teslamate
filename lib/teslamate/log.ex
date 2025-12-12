@@ -25,6 +25,7 @@ defmodule TeslaMate.Log do
 
   def get_car_by([{_key, nil}]), do: nil
   def get_car_by([{_key, _val}] = opts), do: Repo.get_by(Car, opts)
+  def get_car_by(opts) when is_list(opts), do: Repo.get_by(Car, opts)
 
   def create_car(attrs) do
     %Car{settings: %CarSettings{}}

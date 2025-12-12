@@ -57,8 +57,8 @@ defmodule TeslaMate.Tenants do
         :start_link,
         [
           [
-            {TeslaMate.Api, [tenant_id: tenant_id]}
-            # {TeslaMate.Vehicles, [tenant_id: tenant_id]}
+            {TeslaMate.Api, [tenant_id: tenant_id]},
+            {TeslaMate.Vehicles, [tenant_id: tenant_id]}
           ],
           [
             strategy: :one_for_one,

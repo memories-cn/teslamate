@@ -160,6 +160,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
   @impl true
   def init(opts) do
     %Car{settings: %CarSettings{}} = car = Keyword.fetch!(opts, :car)
+    tenant_id = Keyword.fetch!(opts, :tenant_id)
 
     deps = %{
       log: Keyword.get(opts, :deps_log, Log),
@@ -167,7 +168,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       settings: Keyword.get(opts, :deps_settings, Settings),
       locations: Keyword.get(opts, :deps_locations, Locations),
       vehicles: Keyword.get(opts, :deps_vehicles, Vehicles),
-      pubsub: Keyword.get(opts, :deps_pubsub, Phoenix.PubSub)
+      pubsub: Keyword.get(opts, :deps_pubsub, Phoenix.PubSub),
+      tenant_id: tenant_id
     }
 
     last_state_change =
@@ -683,7 +685,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
   def handle_event(:internal, :fetch_state, _state, %Data{car: car} = data) do
     Task.async(fn ->
       with {:ok, %Vehicle{state: state} = vehicle} when is_binary(state) <-
-             call(data.deps.api, :get_vehicle, [car.eid]) do
+             call(data.deps.api, :get_vehicle, [data.deps.tenant_id, car.eid]) do
         {String.to_existing_atom(state), vehicle}
       end
     end)
@@ -1284,21 +1286,22 @@ defmodule TeslaMate.Vehicles.Vehicle do
   end
 
   defp fetch_with_reachable_assumption(id, deps) do
-    with {:error, :vehicle_unavailable} <- call(deps.api, :get_vehicle_with_state, [id]) do
-      call(deps.api, :get_vehicle, [id])
+    with {:error, :vehicle_unavailable} <-
+           call(deps.api, :get_vehicle_with_state, [deps.tenant_id, id]) do
+      call(deps.api, :get_vehicle, [deps.tenant_id, id])
     end
   end
 
   defp fetch_with_unreachable_assumption(id, deps) do
-    with {:ok, %Vehicle{state: "online"}} <- call(deps.api, :get_vehicle, [id]) do
-      call(deps.api, :get_vehicle_with_state, [id])
+    with {:ok, %Vehicle{state: "online"}} <- call(deps.api, :get_vehicle, [deps.tenant_id, id]) do
+      call(deps.api, :get_vehicle_with_state, [deps.tenant_id, id])
     end
   end
 
   defp fetch_strict(id, deps) do
     alias Vehicle, as: V
 
-    case call(deps.api, :get_vehicle_with_state, [id]) do
+    case call(deps.api, :get_vehicle_with_state, [deps.tenant_id, id]) do
       {:ok, %V{drive_state: %Drive{}, charge_state: %Charge{}, climate_state: %Climate{}} = v} ->
         {:ok, v}
 
