@@ -164,41 +164,850 @@
 - 确认车辆进程正常启动
 - 观察数据库中数据记录是否持续写入
 
-### 阶段二：OAuth 认证改造
+## 阶段二：OAuth 认证改造（详细设计）
 
 **目标：** 替换原有单一 Token 存储，支持多租户 Tesla 账户管理
 
-#### 2.1 对`private.tokens` 表增加`tenant_id` 字段
+### 2.1 数据库表结构调整
 
-#### 2.2 Elixir Schema 适配
+**修改文件：** `priv/repo/migrations/YYYYMMDDHHMMSS_add_tenant_id_to_tokens.exs`
 
-#### 2.3 TeslaMate.Api 模块改造
+**变更说明：**
 
-#### 2.4 认证流程时序
+为 `private.tokens` 表增加租户标识字段，实现 Token 的多租户隔离存储：
 
-**租户首次绑定 Tesla 账户：**
+**迁移任务：**
 
-1. 用户在 Go 前端输入 Tesla 账户凭证
-2. Go 服务调用 TeslaMate GenServer: `Api.sign_in(tenant_id, credentials)`
-3. TeslaMate 调用 Tesla OAuth2 端点获取 Token
-4. TeslaMate 创建 `tesla_accounts` 记录，关联 `tenant_id`
-5. TeslaMate 调度自动刷新任务
-6. 返回成功响应给 Go 层
+1. 为 `private.tokens` 表添加 `tenant_id uuid` 字段（初始允许 NULL）
+2. 为现有数据填充默认租户 ID（如果有历史数据）
+3. 将 `tenant_id` 设置为 NOT NULL
+4. 创建组合索引 `idx_tokens_tenant_id` 提升查询性能
+5. 创建唯一约束 `tokens_tenant_id_unique` 确保每个租户只有一条 Token 记录
+
+**表结构定义：**
+
+| 字段名      | 类型      | 约束             | 说明                 |
+| ----------- | --------- | ---------------- | -------------------- |
+| id          | bigserial | PRIMARY KEY      | 主键（自增）         |
+| access      | binary    | NOT NULL         | 加密的 access_token  |
+| refresh     | binary    | NOT NULL         | 加密的 refresh_token |
+| tenant_id   | uuid      | NOT NULL, UNIQUE | 租户标识（新增）     |
+| inserted_at | timestamp | NOT NULL         | 创建时间             |
+| updated_at  | timestamp | NOT NULL         | 更新时间             |
+
+**迁移脚本结构示例：**
+
+Ecto Migration 的 `up` 函数实现逻辑：
+
+- 第一步：添加 tenant_id 字段（允许 NULL）
+- 第二步：为现有数据填充默认租户 ID（如有需要）
+- 第三步：设置为 NOT NULL
+- 第四步：创建唯一约束
+- 第五步：创建索引
+
+SQL 操作顺序（Ecto Migration 中使用对应的 Elixir 函数）：
+
+```sql
+-- 第一步：添加 tenant_id 字段（允许 NULL）
+ALTER TABLE private.tokens ADD COLUMN tenant_id uuid;
+
+-- 第二步：为现有数据填充默认租户 ID（如有需要）
+-- UPDATE private.tokens SET tenant_id = '<默认租户UUID>' WHERE tenant_id IS NULL;
+
+-- 第三步：设置为 NOT NULL
+ALTER TABLE private.tokens ALTER COLUMN tenant_id SET NOT NULL;
+
+-- 第四步：创建唯一约束
+CREATE UNIQUE INDEX tokens_tenant_id_unique ON private.tokens (tenant_id);
+
+-- 第五步：创建索引
+CREATE INDEX idx_tokens_tenant_id ON private.tokens (tenant_id);
+```
+
+**回滚策略：**
+
+提供 `down` 函数删除索引和字段：
+
+```sql
+DROP INDEX IF EXISTS tokens_tenant_id_unique;
+DROP INDEX IF EXISTS idx_tokens_tenant_id;
+ALTER TABLE private.tokens DROP COLUMN IF EXISTS tenant_id;
+```
+
+**影响评估：**
+
+- 打破单一 Token 存储限制，支持多个租户同时使用
+- 需要修改所有 Token 查询逻辑，添加 `tenant_id` 过滤条件
+- 确保历史数据迁移不影响现有系统运行
+- 现有单租户环境可通过设置默认 tenant_id 平滑迁移
+
+**数据兼容性处理：**
+
+对于现有单租户部署：
+
+- 在迁移时自动生成一个默认 tenant_id（如 UUID）
+- 将现有 Token 记录关联到默认租户
+- 系统启动时自动检测并关联历史车辆数据
+
+### 2.2 Elixir Schema 适配
+
+**修改文件：** `lib/teslamate/auth/tokens.ex`
+
+**变更说明：**
+
+调整 `TeslaMate.Auth.Tokens` Schema，增加 `tenant_id` 字段映射：
+
+**Schema 定义调整：**
+
+原有结构：
+
+```elixir
+defmodule TeslaMate.Auth.Tokens do
+  use Ecto.Schema
+  import Ecto.Changeset
+  alias TeslaMate.Vault.Encrypted
+
+  @schema_prefix :private
+
+  schema "tokens" do
+    field :refresh, Encrypted.Binary, redact: true
+    field :access, Encrypted.Binary, redact: true
+    timestamps()
+  end
+end
+```
+
+调整后结构：
+
+```elixir
+defmodule TeslaMate.Auth.Tokens do
+  use Ecto.Schema
+  import Ecto.Changeset
+  alias TeslaMate.Vault.Encrypted
+
+  @schema_prefix :private
+
+  schema "tokens" do
+    field :refresh, Encrypted.Binary, redact: true
+    field :access, Encrypted.Binary, redact: true
+    field :tenant_id, Ecto.UUID  # 新增租户标识
+    timestamps()
+  end
+end
+```
+
+**Changeset 验证调整：**
+
+原有验证：
+
+```elixir
+def changeset(tokens, attrs) do
+  tokens
+  |> cast(attrs, [:access, :refresh])
+  |> validate_required([:access, :refresh])
+end
+```
+
+调整后验证：
+
+```elixir
+def changeset(tokens, attrs) do
+  tokens
+  |> cast(attrs, [:access, :refresh, :tenant_id])  # 添加 tenant_id
+  |> validate_required([:access, :refresh, :tenant_id])  # 必填
+  |> unique_constraint(:tenant_id, name: :tokens_tenant_id_unique)  # 唯一性约束
+end
+```
+
+**影响评估：**
+
+- 所有创建和更新 Token 的操作必须提供 `tenant_id`
+- Changeset 验证确保数据完整性
+- 唯一性约束防止同一租户重复创建 Token
+- 加密字段（access、refresh）保持不变，继续使用 `TeslaMate.Vault.Encrypted`
+
+---
+
+**修改文件：** `lib/teslamate/auth.ex`
+
+**变更说明：**
+
+调整 `TeslaMate.Auth` 上下文模块，所有 Token 操作增加租户参数：
+
+**函数签名调整：**
+
+原有函数：
+
+| 函数名                | 原签名                          | 说明         |
+| --------------------- | ------------------------------- | ------------ |
+| get_tokens/0          | `get_tokens()`                  | 获取 Token   |
+| save/1                | `save(%{token, refresh_token})` | 保存 Token   |
+| can_decrypt_tokens?/0 | `can_decrypt_tokens?()`         | 验证加密密钥 |
+
+调整后函数：
+
+| 函数名                | 新签名                                     | 说明                   |
+| --------------------- | ------------------------------------------ | ---------------------- |
+| get_tokens/1          | `get_tokens(tenant_id)`                    | 根据租户 ID 获取 Token |
+| save/2                | `save(tenant_id, %{token, refresh_token})` | 保存指定租户的 Token   |
+| can_decrypt_tokens?/1 | `can_decrypt_tokens?(tenant_id)`           | 验证租户加密密钥       |
+
+**实现逻辑调整：**
+
+`get_tokens/1` 实现：
+
+```elixir
+def get_tokens(tenant_id) do
+  from(t in Tokens, where: t.tenant_id == ^tenant_id)
+  |> Repo.one()
+end
+```
+
+说明：
+
+- 查询条件增加 `tenant_id` 过滤
+- 使用 `Repo.one()` 确保每个租户最多返回一条记录
+- 如果不存在返回 `nil`
+
+`save/2` 实现：
+
+```elixir
+def save(tenant_id, %{token: access, refresh_token: refresh}) do
+  attrs = %{access: access, refresh: refresh, tenant_id: tenant_id}
+
+  maybe_created_or_updated =
+    case get_tokens(tenant_id) do
+      nil -> create_tokens(attrs)
+      tokens -> update_tokens(tokens, attrs)
+    end
+
+  with {:ok, _tokens} <- maybe_created_or_updated do
+    :ok
+  end
+end
+```
+
+说明：
+
+- 先根据 `tenant_id` 查询是否已存在 Token
+- 不存在则创建新记录，存在则更新现有记录
+- 自动处理 Token 的加密存储
+
+`can_decrypt_tokens?/1` 调整：
+
+```elixir
+def can_decrypt_tokens?(tenant_id) do
+  case get_tokens(tenant_id) do
+    %Tokens{} = tokens ->
+      is_binary(tokens.access) and is_binary(tokens.refresh)
+    nil ->
+      true
+  end
+end
+```
+
+说明：
+
+- 验证租户的 Token 是否可以正确解密
+- 如果租户没有 Token 记录，返回 `true`（允许首次登录）
+- 如果有 Token 但无法解密，返回 `false`（需要重新登录）
+
+**影响评估：**
+
+- 所有调用 `TeslaMate.Auth` 的模块需要传递 `tenant_id` 参数
+- 确保 Token 查询和更新始终在租户范围内执行
+- 提供了清晰的租户隔离边界
+- 兼容现有的加密机制（TeslaMate.Vault）
+
+### 2.3 TeslaMate.Api 模块改造
+
+**修改文件：** `lib/teslamate/api.ex`
+
+**变更说明：**
+
+TeslaMate.Api 是 Tesla OAuth Token 管理的核心 GenServer，需要调整为支持多租户的架构：
+
+**启动参数调整：**
+
+**State 结构体扩展：**
+
+原有 State：
+
+```elixir
+defmodule State do
+  defstruct [:name, :deps, :refresh_timer]
+end
+```
+
+调整后 State：
+
+```elixir
+defmodule State do
+  defstruct [:name, :tenant_id, :deps, :refresh_timer]  # 新增 tenant_id
+end
+```
+
+说明：
+
+- `tenant_id`：当前 Api 实例服务的租户标识
+- `name`：GenServer 注册名称，使用 Registry 动态命名
+- `deps`：依赖注入（Auth、Vehicles、Settings 等模块）
+- `refresh_timer`：Token 刷新定时器引用
+
+**`start_link/1` 参数调整：**
+
+原有启动：
+
+```elixir
+def start_link(opts) do
+  GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, @name))
+end
+```
+
+调整后启动：
+
+```elixir
+def start_link(opts) do
+  tenant_id = Keyword.fetch!(opts, :tenant_id)  # 必须提供 tenant_id
+  name = Keyword.get(opts, :name, via_tuple(tenant_id))
+  GenServer.start_link(__MODULE__, opts, name: name)
+end
+
+# 进程命名规则（使用 Registry）
+defp via_tuple(tenant_id) do
+  {:via, Registry, {TeslaMate.Registry, {__MODULE__, tenant_id}}}
+end
+```
+
+说明：
+
+- 强制要求启动时提供 `tenant_id`
+- 使用 Registry 实现动态进程命名，避免全局名称冲突
+- 每个租户拥有独立的 Api GenServer 实例
+- 进程名称格式：`{TeslaMate.Api, tenant_id}`
+
+**Token 存储与查询调整：**
+
+**ETS 表结构调整：**
+
+原有 ETS 结构：
+
+- 全局单一 ETS 表，键为 `:auth`
+- 无租户隔离
+
+调整后 ETS 结构：
+
+- 每个租户独立的 ETS 表，命名为 `"api_#{tenant_id}"`
+- 键仍为 `:auth`，但在租户级别的表中
+- 读并发优化保持不变
+
+`insert_auth/2` 调整：
+
+```elixir
+defp insert_auth(tenant_id, %Auth{} = auth) do
+  table_name = ets_table_name(tenant_id)
+  :ets.insert(table_name, {:auth, auth})
+end
+
+defp ets_table_name(tenant_id) do
+  String.to_atom("api_#{tenant_id}")
+end
+```
+
+`fetch_auth/1` 调整：
+
+```elixir
+defp fetch_auth(tenant_id) do
+  table_name = ets_table_name(tenant_id)
+  case :ets.lookup(table_name, :auth) do
+    [auth: %Auth{} = auth] -> {:ok, auth}
+    [] -> {:error, :not_signed_in}
+  end
+rescue
+  _ in ArgumentError -> {:error, :not_signed_in}
+end
+```
+
+说明：
+
+- 每个租户的 Token 缓存在独立的 ETS 表中
+- 避免跨租户 Token 泄露
+- 表名使用 atom，需注意 atom 数量限制（租户数量有限时可接受）
+
+**Token 刷新流程调整：**
+
+**`init/1` 回调调整：**
+
+原有逻辑：
+
+```elixir
+def init(opts) do
+  name = Keyword.get(opts, :name, @name)
+  :ets.new(name, [:set, :public, :named_table, read_concurrency: true])
+
+  state = %State{name: name, deps: parse_deps(opts)}
+
+  with {:ok, tokens} <- call(state.deps.auth, :get_tokens),
+       {:ok, auth} <- refresh_tokens(tokens) do
+    true = insert_auth(name, auth)
+    :ok = call(state.deps.auth, :save, [auth])
+    {:ok, state} = schedule_refresh(auth, state)
+    {:ok, state}
+  else
+    _ -> {:ok, state}
+  end
+end
+```
+
+调整后逻辑：
+
+```elixir
+def init(opts) do
+  tenant_id = Keyword.fetch!(opts, :tenant_id)
+  name = Keyword.get(opts, :name, via_tuple(tenant_id))
+
+  # 创建租户级别的 ETS 表
+  table_name = ets_table_name(tenant_id)
+  :ets.new(table_name, [:set, :public, :named_table, read_concurrency: true])
+
+  # 安装租户级熔断器
+  :fuse.install(fuse_name(tenant_id), {{:standard, 5, 10_000}, {:reset, :timer.minutes(1)}})
+
+  state = %State{
+    name: name,
+    tenant_id: tenant_id,
+    deps: parse_deps(opts)
+  }
+
+  # 使用租户 ID 查询 Token
+  with {:ok, tokens} <- call(state.deps.auth, :get_tokens, [tenant_id]),
+       {:ok, auth} <- refresh_tokens(tokens) do
+    true = insert_auth(tenant_id, auth)
+    :ok = call(state.deps.auth, :save, [tenant_id, auth])
+    {:ok, state} = schedule_refresh(auth, state)
+    :ok = :fuse.reset(fuse_name(tenant_id))
+    {:ok, state}
+  else
+    _ -> {:ok, state}
+  end
+end
+```
+
+说明：
+
+- 从 `opts` 中提取 `tenant_id`
+- 创建租户独立的 ETS 表和熔断器
+- Token 查询和保存都携带 `tenant_id` 参数
+- 初始化时自动刷新 Token（如果存在）
+
+**`handle_info(:refresh_auth, state)` 调整：**
+
+原有刷新逻辑：
+
+```elixir
+def handle_info(:refresh_auth, %State{name: name} = state) do
+  case fetch_auth(name) do
+    {:ok, tokens} ->
+      Logger.info("Refreshing access token ...")
+      case Auth.refresh(tokens) do
+        {:ok, refreshed_tokens} ->
+          true = insert_auth(name, refreshed_tokens)
+          :ok = call(state.deps.auth, :save, [refreshed_tokens])
+          {:ok, state} = schedule_refresh(refreshed_tokens, state)
+          :ok = :fuse.reset(fuse_name(name))
+          {:noreply, state}
+        {:error, reason} ->
+          Logger.warning("Token refresh failed: #{inspect(reason)}")
+          # 重试逻辑...
+      end
+  end
+end
+```
+
+调整后刷新逻辑：
+
+```elixir
+def handle_info(:refresh_auth, %State{tenant_id: tenant_id} = state) do
+  case fetch_auth(tenant_id) do
+    {:ok, tokens} ->
+      Logger.info("[Tenant #{tenant_id}] Refreshing access token ...")
+      case Auth.refresh(tokens) do
+        {:ok, refreshed_tokens} ->
+          true = insert_auth(tenant_id, refreshed_tokens)
+          :ok = call(state.deps.auth, :save, [tenant_id, refreshed_tokens])
+          {:ok, state} = schedule_refresh(refreshed_tokens, state)
+          :ok = :fuse.reset(fuse_name(tenant_id))
+          {:noreply, state}
+        {:error, reason} ->
+          Logger.warning("[Tenant #{tenant_id}] Token refresh failed: #{inspect(reason)}")
+          Logger.warning("[Tenant #{tenant_id}] Retrying in 5 minutes...")
+
+          if is_reference(state.refresh_timer), do: Process.cancel_timer(state.refresh_timer)
+          refresh_timer = Process.send_after(self(), :refresh_auth, :timer.minutes(5))
+
+          {:noreply, %State{state | refresh_timer: refresh_timer}}
+      end
+    {:error, reason} ->
+      Logger.warning("[Tenant #{tenant_id}] Cannot refresh access token: #{inspect(reason)}")
+      {:noreply, state}
+  end
+end
+```
+
+说明：
+
+- 日志输出包含 `tenant_id` 便于问题排查
+- Token 刷新失败时租户级别重试，不影响其他租户
+- 保持原有的重试机制（5 分钟后重试）
+
+**签名接口调整：**
+
+**`sign_in/2` 调整为 `sign_in/2`（参数语义变化）：**
+
+原有接口：
+
+```elixir
+def sign_in(name \\ @name, args) do
+  GenServer.call(name, {:sign_in, args}, @timeout)
+end
+```
+
+调整后接口：
+
+```elixir
+def sign_in(tenant_id, args) do
+  name = via_tuple(tenant_id)
+  GenServer.call(name, {:sign_in, args}, @timeout)
+end
+```
+
+说明：
+
+- 第一个参数从进程名改为 `tenant_id`
+- 内部自动查找对应的 GenServer 进程
+- 简化调用方逻辑，无需关心进程命名细节
+
+**`list_vehicles/1` 等 API 调用调整：**
+
+原有接口：
+
+```elixir
+def list_vehicles(name \\ @name) do
+  GenServer.call(name, :list_vehicles, @timeout)
+end
+```
+
+调整后接口：
+
+```elixir
+def list_vehicles(tenant_id) do
+  name = via_tuple(tenant_id)
+  GenServer.call(name, :list_vehicles, @timeout)
+end
+```
+
+同样调整的函数：
+
+- `get_vehicle/2` → `get_vehicle(tenant_id, id)`
+- `get_vehicle_with_state/2` → `get_vehicle_with_state(tenant_id, id)`
+- `signed_in?/1` → `signed_in?(tenant_id)`
+
+**熔断器命名调整：**
+
+租户级别熔断器：
+
+```elixir
+defp fuse_name(tenant_id) do
+  String.to_atom("api_auth_#{tenant_id}")
+end
+```
+
+说明：
+
+- 每个租户独立的熔断器
+- 一个租户的 API 失败不触发其他租户的熔断
+- 熔断器名称使用 atom，需控制租户数量
+
+**影响评估：**
+
+- 每个租户拥有独立的 Api GenServer 实例
+- Token 管理完全隔离，一个租户的 Token 失效不影响其他租户
+- 熔断器按租户隔离，防止单个租户故障影响全局
+- 需要配合租户监督器（阶段三）启动租户级 Api 实例
+- 进程数量增加（每个租户一个 Api 进程），需合理控制租户规模
+
+**进程查找与调用调整：**
+
+所有调用 `TeslaMate.Api` 的代码需要使用 `via_tuple(tenant_id)` 查找进程：
+
+```elixir
+# 示例：查询车辆列表
+def list_vehicles(tenant_id) do
+  TeslaMate.Api.list_vehicles(tenant_id)
+end
+
+# 内部实现
+def list_vehicles(tenant_id) do
+  name = via_tuple(tenant_id)
+  GenServer.call(name, :list_vehicles, @timeout)
+end
+```
+
+**验证方式：**
+
+- 启动多个租户的 Api 实例，验证进程独立性
+- 测试 Token 刷新时不同租户互不干扰
+- 验证熔断器隔离效果
+- 测试租户进程崩溃后的自动重启（由租户监督器负责）
+
+### 2.4 认证流程时序
+
+本节通过 Mermaid 时序图描述多租户环境下的 OAuth 认证流程。
+
+**租户首次绑定 Tesla 账户流程：**
+
+```mermaid
+sequenceDiagram
+    participant User as 用户（Go 前端）
+    participant GoAPI as Go + Gin API 层
+    participant DB as PostgreSQL
+    participant ApiSrv as TeslaMate.Api<br/>(GenServer)
+    participant TeslaOAuth as Tesla OAuth2 端点
+    participant AuthCtx as TeslaMate.Auth<br/>(上下文)
+
+    User->>GoAPI: 1. 输入 Tesla 账户凭证
+    GoAPI->>DB: 2. 查询租户信息（tenant_id）
+    DB-->>GoAPI: 返回租户记录
+
+    GoAPI->>ApiSrv: 3. 调用 Api.sign_in(tenant_id, credentials)
+    ApiSrv->>TeslaOAuth: 4. POST /oauth2/v3/token<br/>(grant_type=password)
+    TeslaOAuth-->>ApiSrv: 5. 返回 access_token + refresh_token
+
+    ApiSrv->>ApiSrv: 6. 缓存 Token 到 ETS（租户级表）
+    ApiSrv->>AuthCtx: 7. Auth.save(tenant_id, tokens)
+    AuthCtx->>DB: 8. INSERT/UPDATE private.tokens<br/>(加密存储)
+    DB-->>AuthCtx: 确认保存成功
+
+    ApiSrv->>ApiSrv: 9. schedule_refresh(auth, state)<br/>（调度 Token 刷新）
+    ApiSrv->>ApiSrv: 10. 重置熔断器 fuse.reset()
+
+    ApiSrv-->>GoAPI: 11. 返回成功响应 :ok
+    GoAPI-->>User: 12. 显示绑定成功提示
+```
+
+**流程说明：**
+
+1. 用户在 Go 前端输入 Tesla 账户凭证（用户名/密码或 refresh_token）
+2. Go 服务查询数据库获取当前用户的 `tenant_id`
+3. Go 服务调用 TeslaMate GenServer：`Api.sign_in(tenant_id, credentials)`
+4. TeslaMate.Api 调用 Tesla OAuth2 端点获取 Token
+5. Tesla 返回 `access_token`、`refresh_token` 和过期时间
+6. TeslaMate 将 Token 缓存到租户级别的 ETS 表
+7. TeslaMate 调用 `TeslaMate.Auth.save/2` 持久化 Token
+8. Token 被加密后存储到 `private.tokens` 表，关联 `tenant_id`
+9. TeslaMate 调度自动刷新任务（在 Token 过期前 75% 时触发）
+10. 重置熔断器，允许后续 API 调用
+11. 返回成功响应给 Go 层
+12. Go 通知用户绑定成功
 
 **Token 自动刷新流程：**
 
-1. TeslaMate.Api 定时器触发 `:refresh_auth` 消息
-2. 根据 `tenant_id` 查询数据库获取 refresh_token
-3. 调用 `TeslaApi.Auth.Refresh.refresh/1`
-4. 更新 `tesla_accounts` 表中的 Token 和过期时间
-5. 重置 ETS 缓存
-6. 调度下次刷新（75% 过期时间）
+```mermaid
+sequenceDiagram
+    participant Timer as Erlang Timer
+    participant ApiSrv as TeslaMate.Api<br/>(GenServer)
+    participant ETS as ETS 缓存<br/>(租户级表)
+    participant TeslaOAuth as Tesla OAuth2 端点
+    participant AuthCtx as TeslaMate.Auth
+    participant DB as PostgreSQL
 
-**多租户并发处理：**
+    Timer->>ApiSrv: 1. 定时器触发 :refresh_auth 消息
+    ApiSrv->>ApiSrv: 2. 提取 tenant_id from State
+    ApiSrv->>ETS: 3. fetch_auth(tenant_id)
+    ETS-->>ApiSrv: 返回缓存的 refresh_token
 
-- 每个租户的 Token 独立管理
-- 使用 ETS 表缓存避免频繁数据库查询
-- 熔断器按租户隔离，防止单个租户故障影响全局
+    ApiSrv->>TeslaOAuth: 4. TeslaApi.Auth.Refresh.refresh/1<br/>POST /oauth2/v3/token
+    TeslaOAuth-->>ApiSrv: 5. 返回新的 access_token + refresh_token
+
+    ApiSrv->>ETS: 6. insert_auth(tenant_id, new_auth)
+    ApiSrv->>AuthCtx: 7. Auth.save(tenant_id, new_auth)
+    AuthCtx->>DB: 8. UPDATE private.tokens<br/>WHERE tenant_id = ?
+    DB-->>AuthCtx: 更新成功
+
+    ApiSrv->>ApiSrv: 9. schedule_refresh(new_auth, state)<br/>调度下次刷新
+    ApiSrv->>ApiSrv: 10. fuse.reset(fuse_name(tenant_id))
+
+    Note over ApiSrv: Token 刷新成功，继续提供服务
+```
+
+**流程说明：**
+
+1. TeslaMate.Api 定时器触发 `:refresh_auth` 消息（在 Token 过期前 75% 时）
+2. 从 GenServer State 中提取当前租户的 `tenant_id`
+3. 从租户级 ETS 表查询缓存的 `refresh_token`
+4. 调用 `TeslaApi.Auth.Refresh.refresh/1` 刷新 Token
+5. Tesla OAuth2 端点返回新的 `access_token` 和 `refresh_token`
+6. 更新租户级 ETS 缓存
+7. 调用 `TeslaMate.Auth.save/2` 更新数据库
+8. 执行 UPDATE 操作，根据 `tenant_id` 更新加密的 Token
+9. 重新调度下次刷新（计算新的过期时间的 75%）
+10. 重置租户级熔断器，清除之前的失败记录
+
+**Token 刷新失败重试流程：**
+
+```mermaid
+sequenceDiagram
+    participant Timer as Erlang Timer
+    participant ApiSrv as TeslaMate.Api
+    participant TeslaOAuth as Tesla OAuth2 端点
+    participant Fuse as 熔断器<br/>(tenant级)
+
+    Timer->>ApiSrv: 1. :refresh_auth 消息
+    ApiSrv->>TeslaOAuth: 2. 调用 refresh API
+    TeslaOAuth-->>ApiSrv: 3. 返回错误（401/429/500）
+
+    ApiSrv->>ApiSrv: 4. Logger.warning("Token refresh failed")
+    ApiSrv->>Fuse: 5. fuse.melt() - 记录失败
+
+    alt 熔断器未爆炸
+        ApiSrv->>ApiSrv: 6. 调度 5 分钟后重试
+        ApiSrv->>Timer: 7. Process.send_after(:refresh_auth, 5min)
+    else 熔断器已爆炸（5次失败）
+        ApiSrv->>ETS: 8. 删除缓存的 Token
+        ApiSrv->>ApiSrv: 9. 标记为 :not_signed_in
+        Note over ApiSrv: 需要用户重新登录
+    end
+```
+
+**流程说明：**
+
+1. 定时器触发 Token 刷新
+2. 调用 Tesla OAuth2 API 刷新 Token
+3. API 返回错误（如 401 未授权、429 速率限制、500 服务器错误）
+4. 记录警告日志，包含 `tenant_id` 和错误原因
+5. 熔断器记录失败（`fuse.melt()`）
+6. 如果熔断器未爆炸（失败次数 < 5），调度 5 分钟后重试
+7. 使用 `Process.send_after/3` 发送延迟消息
+8. 如果熔断器爆炸（连续 5 次失败），删除 ETS 缓存
+9. 将租户状态标记为 `:not_signed_in`，后续 API 调用返回未登录错误
+
+**多租户并发刷新场景：**
+
+```mermaid
+sequenceDiagram
+    participant T1 as TeslaMate.Api<br/>(Tenant 1)
+    participant T2 as TeslaMate.Api<br/>(Tenant 2)
+    participant T3 as TeslaMate.Api<br/>(Tenant 3)
+    participant OAuth as Tesla OAuth2 端点
+    participant DB as PostgreSQL
+
+    par 租户 1 刷新
+        T1->>OAuth: refresh(tenant_1_token)
+        OAuth-->>T1: new_token_1
+        T1->>DB: UPDATE tokens WHERE tenant_id=1
+    and 租户 2 刷新
+        T2->>OAuth: refresh(tenant_2_token)
+        OAuth-->>T2: new_token_2
+        T2->>DB: UPDATE tokens WHERE tenant_id=2
+    and 租户 3 刷新
+        T3->>OAuth: refresh(tenant_3_token)
+        OAuth-->>T3: new_token_3
+        T3->>DB: UPDATE tokens WHERE tenant_id=3
+    end
+
+    Note over T1,T3: 各租户 Token 刷新互不影响<br/>数据库连接池自动调度
+```
+
+**流程说明：**
+
+- 每个租户的 Token 独立管理，互不干扰
+- 刷新操作并发执行，利用数据库连接池
+- 每个租户的 UPDATE 操作有独立的 `WHERE tenant_id = ?` 条件
+- 熔断器按租户隔离，一个租户的失败不影响其他租户
+- ETS 缓存按租户分表，避免竞争条件
+
+**与 Go 服务集成的完整流程：**
+
+```mermaid
+sequenceDiagram
+    participant User as 微信小程序用户
+    participant GoAPI as Go + Gin API
+    participant DB as PostgreSQL
+    participant TenantSup as TeslaMate.Tenants<br/>(监督器)
+    participant ApiSrv as TeslaMate.Api<br/>(租户级)
+    participant VehiclesSup as TeslaMate.Vehicles<br/>(租户级)
+
+    User->>GoAPI: 1. 微信登录 + 注册
+    GoAPI->>DB: 2. 创建 users + tenants 记录
+    DB-->>GoAPI: 返回 tenant_id
+
+    User->>GoAPI: 3. 绑定 Tesla 账户
+    GoAPI->>DB: 4. 查询 tenant_id
+    GoAPI->>ApiSrv: 5. Api.sign_in(tenant_id, creds)
+    ApiSrv->>DB: 6. 保存 Token 到 private.tokens
+
+    GoAPI->>TenantSup: 7. 通知启动租户数据采集<br/>(NOTIFY 或轮询)
+    TenantSup->>ApiSrv: 8. 启动租户级 Api GenServer
+    TenantSup->>VehiclesSup: 9. 启动租户级 Vehicles 监督器
+
+    VehiclesSup->>ApiSrv: 10. 调用 list_vehicles(tenant_id)
+    ApiSrv->>ApiSrv: 11. 从 ETS 获取 Token
+    ApiSrv->>ApiSrv: 12. 调用 Tesla API 获取车辆列表
+
+    VehiclesSup->>DB: 13. 创建 cars 记录（关联 tenant_id）
+    VehiclesSup->>VehiclesSup: 14. 为每个车辆启动 Vehicle 进程
+
+    Note over VehiclesSup: 开始数据采集
+
+    GoAPI-->>User: 15. 返回绑定成功 + 车辆列表
+```
+
+**流程说明：**
+
+1. 用户通过微信小程序登录
+2. Go 服务创建用户和租户记录
+3. 用户绑定 Tesla 账户
+4. Go 查询用户的 `tenant_id`
+5. Go 调用 TeslaMate.Api 进行登录
+6. TeslaMate 保存加密的 Token
+7. Go 通知 TeslaMate.Tenants 监督器启动租户
+8. 监督器为租户启动 Api GenServer
+9. 监督器为租户启动 Vehicles 监督器
+10. Vehicles 监督器调用 Api 获取车辆列表
+11. Api 从 ETS 缓存获取 Token
+12. 调用 Tesla API 获取车辆信息
+13. 在数据库创建车辆记录，关联 `tenant_id`
+14. 为每个车辆启动独立的 Vehicle GenStateMachine
+15. Go 返回绑定成功响应
+
+**关键时序特性：**
+
+- Token 刷新与车辆数据采集解耦，互不阻塞
+- 租户级别的 GenServer 独立运行，崩溃不影响其他租户
+- 使用 ETS 缓存减少数据库查询，提升性能
+- 熔断器保护 Tesla API，防止过度调用
+- 支持多租户并发操作，利用 BEAM 的并发优势
+
+**安全性考虑：**
+
+- Token 在数据库中加密存储（使用 TeslaMate.Vault）
+- ETS 缓存仅在内存中，进程重启后需重新加载
+- 每个租户的 Token 完全隔离，无法跨租户访问
+- 熔断器防止单个租户的失败导致系统雪崩
+- 日志输出包含 `tenant_id`，便于审计和问题排查
+
+---
+
+## 总结
+
+阶段二的 OAuth 认证改造通过以下关键设计实现了多租户支持：
+
+1. **数据库层面**：为 `private.tokens` 表增加 `tenant_id` 字段，实现 Token 的租户级隔离存储
+2. **Schema 层面**：调整 Elixir Schema 和 Changeset，确保所有 Token 操作携带租户标识
+3. **业务逻辑层面**：改造 TeslaMate.Api GenServer，支持租户级进程实例和独立的 Token 管理
+4. **流程保障**：通过时序图明确各组件交互流程，确保 Token 刷新、失败重试和多租户并发的正确性
+
+完成阶段二改造后，系统具备了多租户 Tesla 账户管理能力，为阶段三的租户监督树改造奠定了基础。
 
 ### 阶段三：租户监督树改造
 
