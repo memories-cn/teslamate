@@ -3,7 +3,7 @@ defmodule TeslaMate.Vehicles.VehicleSyncTest do
 
   describe "Summary" do
     alias TeslaMate.Vehicles.Vehicle.Summary
-    alias TeslaMate.Mqtt.PubSub.VehicleSubscriber
+    # alias TeslaMate.Mqtt.PubSub.VehicleSubscriber
     alias TeslaMate.Log.Car
     alias TeslaMate.Log
 
@@ -13,13 +13,13 @@ defmodule TeslaMate.Vehicles.VehicleSyncTest do
       {:ok, _pid} = start_supervised({MqttPublisherMock, name: publisher_name, pid: self()})
 
       start_supervised(
-        {VehicleSubscriber,
-         [
-           name: name,
-           car_id: car_id,
-           namespace: nil,
-           deps_publisher: {MqttPublisherMock, publisher_name}
-         ]}
+        # {VehicleSubscriber,
+        #  [
+        #    name: name,
+        #    car_id: car_id,
+        #    namespace: nil,
+        #    deps_publisher: {MqttPublisherMock, publisher_name}
+        #  ]}
       )
     end
 

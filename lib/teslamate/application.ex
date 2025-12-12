@@ -17,7 +17,7 @@ defmodule TeslaMate.Application do
   end
 
   defp children do
-    mqtt_config = Application.get_env(:teslamate, :mqtt)
+    # mqtt_config = Application.get_env(:teslamate, :mqtt)
 
     case Application.get_env(:teslamate, :import_directory) do
       nil ->
@@ -26,12 +26,12 @@ defmodule TeslaMate.Application do
           TeslaMate.Vault,
           TeslaMate.HTTP,
           TeslaMate.Api,
-          TeslaMate.Updater,
+          # TeslaMate.Updater,
           {Phoenix.PubSub, name: TeslaMate.PubSub},
-          TeslaMateWeb.Endpoint,
+          # TeslaMateWeb.Endpoint,
           TeslaMate.Terrain,
           TeslaMate.Vehicles,
-          if(mqtt_config != nil, do: {TeslaMate.Mqtt, mqtt_config}),
+          # if(mqtt_config != nil, do: {TeslaMate.Mqtt, mqtt_config}),
           TeslaMate.Repair
         ]
         |> Enum.reject(&is_nil/1)
@@ -42,9 +42,9 @@ defmodule TeslaMate.Application do
           TeslaMate.Vault,
           TeslaMate.HTTP,
           TeslaMate.Api,
-          TeslaMate.Updater,
+          # TeslaMate.Updater,
           {Phoenix.PubSub, name: TeslaMate.PubSub},
-          TeslaMateWeb.Endpoint,
+          # TeslaMateWeb.Endpoint,
           {TeslaMate.Terrain, disabled: true},
           {TeslaMate.Repair, limit: 250},
           {TeslaMate.Import, directory: import_directory}
@@ -71,10 +71,10 @@ defmodule TeslaMate.Application do
     ArgumentError -> nil
   end
 
-  # Tell Phoenix to update the endpoint configuration
-  # whenever the application is updated.
-  def config_change(changed, _new, removed) do
-    TeslaMateWeb.Endpoint.config_change(changed, removed)
-    :ok
-  end
+  # # Tell Phoenix to update the endpoint configuration
+  # # whenever the application is updated.
+  # def config_change(changed, _new, removed) do
+  #   TeslaMateWeb.Endpoint.config_change(changed, removed)
+  #   :ok
+  # end
 end
