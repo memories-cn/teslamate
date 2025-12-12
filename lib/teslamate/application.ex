@@ -26,11 +26,11 @@ defmodule TeslaMate.Application do
           TeslaMate.Repo,
           TeslaMate.Vault,
           TeslaMate.HTTP,
-          TeslaMate.Tenants,
           # TeslaMate.Api, # 现在是按需启动
           # TeslaMate.Updater,
           {Phoenix.PubSub, name: TeslaMate.PubSub},
           # TeslaMateWeb.Endpoint,
+          TeslaMate.Tenants,
           TeslaMate.Terrain,
           # TeslaMate.Vehicles,
           # if(mqtt_config != nil, do: {TeslaMate.Mqtt, mqtt_config}),
@@ -44,11 +44,11 @@ defmodule TeslaMate.Application do
           TeslaMate.Repo,
           TeslaMate.Vault,
           TeslaMate.HTTP,
-          TeslaMate.Tenants,
           # TeslaMate.Api, # 现在是按需启动
           # TeslaMate.Updater,
           {Phoenix.PubSub, name: TeslaMate.PubSub},
           # TeslaMateWeb.Endpoint,
+          TeslaMate.Tenants,
           {TeslaMate.Terrain, disabled: true},
           {TeslaMate.Repair, limit: 250},
           {TeslaMate.Import, directory: import_directory}

@@ -21,6 +21,9 @@ defmodule TeslaMate.Log.Car do
     field :vin, :string
     field :display_priority, :integer
 
+    # 新增租户标识
+    field :tenant_id, Ecto.UUID
+
     belongs_to :settings, CarSettings
 
     has_many :charging_processes, ChargingProcess
@@ -39,6 +42,7 @@ defmodule TeslaMate.Log.Car do
       :vin,
       :name,
       :model,
+      :tenant_id,
       :efficiency,
       :trim_badging,
       :marketing_name,
@@ -47,10 +51,11 @@ defmodule TeslaMate.Log.Car do
       :spoiler_type,
       :display_priority
     ])
-    |> validate_required([:eid, :vid, :vin])
+    |> validate_required([:eid, :vid, :vin, :tenant_id])
     |> unique_constraint(:settings_id)
     |> unique_constraint(:eid)
     |> unique_constraint(:vin)
     |> unique_constraint(:vid)
+    |> unique_constraint(:tenant_id, name: :cars_tenant_id_unique)
   end
 end
