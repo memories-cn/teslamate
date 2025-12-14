@@ -409,8 +409,9 @@ defmodule TeslaMate.Log do
     |> Repo.update()
   end
 
-  def start_charging_process(%Car{id: id}, %{latitude: _, longitude: _} = attrs, opts \\ []) do
+  def start_charging_process(%Car{} = car, %{latitude: _, longitude: _} = attrs, opts \\ []) do
     lookup_address = Keyword.get(opts, :lookup_address, true)
+    id = car.id
     position = Map.put(attrs, :car_id, id)
 
     address_id =
@@ -432,7 +433,11 @@ defmodule TeslaMate.Log do
 
     with {:ok, cproc} <-
            %ChargingProcess{car_id: id, address_id: address_id, geofence_id: geofence_id}
-           |> ChargingProcess.changeset(%{start_date: DateTime.utc_now(), position: position})
+           |> ChargingProcess.changeset(%{
+             start_date: DateTime.utc_now(),
+             position: position,
+             tenant_id: car.tenant_id
+           })
            |> Repo.insert() do
       {:ok, Repo.preload(cproc, [:address, :geofence])}
     end

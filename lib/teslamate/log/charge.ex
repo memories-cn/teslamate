@@ -25,6 +25,8 @@ defmodule TeslaMate.Log.Charge do
     field :rated_battery_range_km, :decimal, read_after_writes: true
     field :not_enough_power_to_heat, :boolean
     field :outside_temp, :decimal, read_after_writes: true
+    # 新增租户标识
+    field :tenant_id, Ecto.UUID
 
     belongs_to :charging_process, ChargingProcess
   end
@@ -52,14 +54,16 @@ defmodule TeslaMate.Log.Charge do
       :ideal_battery_range_km,
       :rated_battery_range_km,
       :not_enough_power_to_heat,
-      :outside_temp
+      :outside_temp,
+      :tenant_id
     ])
     |> validate_required([
       :date,
       :charging_process_id,
       :charge_energy_added,
       :charger_power,
-      :ideal_battery_range_km
+      :ideal_battery_range_km,
+      :tenant_id
     ])
     |> validate_number(:charger_phases, greater_than: 0)
     |> foreign_key_constraint(:charging_process_id)

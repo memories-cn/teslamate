@@ -1393,7 +1393,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       ideal_battery_range_km: Convert.miles_to_km(vehicle.charge_state.ideal_battery_range, 2),
       rated_battery_range_km: Convert.miles_to_km(vehicle.charge_state.battery_range, 2),
       not_enough_power_to_heat: vehicle.charge_state.not_enough_power_to_heat,
-      outside_temp: vehicle.climate_state.outside_temp
+      outside_temp: vehicle.climate_state.outside_temp,
+      tenant_id: data.deps.tenant_id
     }
 
     case call(data.deps.log, :insert_charge, [charging_process, attrs]) do
