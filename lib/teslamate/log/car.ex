@@ -54,6 +54,5 @@ defmodule TeslaMate.Log.Car do
     |> unique_constraint(:eid)
     |> unique_constraint(:vin)
     |> unique_constraint(:vid)
-    |> unique_constraint(:tenant_id, name: :cars_tenant_id_unique)
   end
 end

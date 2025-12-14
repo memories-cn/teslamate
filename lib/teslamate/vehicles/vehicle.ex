@@ -1345,7 +1345,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       tpms_pressure_fl: vehicle.vehicle_state.tpms_pressure_fl,
       tpms_pressure_fr: vehicle.vehicle_state.tpms_pressure_fr,
       tpms_pressure_rl: vehicle.vehicle_state.tpms_pressure_rl,
-      tpms_pressure_rr: vehicle.vehicle_state.tpms_pressure_rr
+      tpms_pressure_rr: vehicle.vehicle_state.tpms_pressure_rr,
+      tenant_id: car.tenant_id
     }
 
     elevation =
@@ -1357,7 +1358,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
     Map.put(position, :elevation, elevation)
   end
 
-  defp create_position(%Stream.Data{} = stream_data, %Data{}) do
+  defp create_position(%Stream.Data{} = stream_data, %Data{} = data) do
     %{
       date: stream_data.time,
       latitude: stream_data.est_lat,
@@ -1366,7 +1367,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       speed: Convert.mph_to_kmh(stream_data.speed),
       battery_level: stream_data.soc,
       elevation: stream_data.elevation,
-      odometer: Convert.miles_to_km(stream_data.odometer, 6)
+      odometer: Convert.miles_to_km(stream_data.odometer, 6),
+      tenant_id: data.deps.tenant_id
     }
   end
 

@@ -33,6 +33,8 @@ defmodule TeslaMate.Log.Position do
     field :tpms_pressure_fr, :decimal
     field :tpms_pressure_rl, :decimal
     field :tpms_pressure_rr, :decimal
+    # 新增租户标识
+    field :tenant_id, Ecto.UUID
 
     belongs_to(:car, Car)
     belongs_to(:drive, Drive)
@@ -69,9 +71,10 @@ defmodule TeslaMate.Log.Position do
       :tpms_pressure_fl,
       :tpms_pressure_fr,
       :tpms_pressure_rl,
-      :tpms_pressure_rr
+      :tpms_pressure_rr,
+      :tenant_id
     ])
-    |> validate_required([:car_id, :date, :latitude, :longitude])
+    |> validate_required([:car_id, :date, :latitude, :longitude, :tenant_id])
     |> foreign_key_constraint(:car_id)
     |> foreign_key_constraint(:drive_id)
   end
