@@ -704,16 +704,25 @@ defmodule TeslaMate.Log do
     |> Repo.update()
   end
 
-  def get_latest_update(%Car{id: id}) do
-    from(u in Update, where: [car_id: ^id], order_by: [desc: :start_date], limit: 1)
+  def get_latest_update(%Car{id: id}, tenant_id) do
+    from(u in Update,
+      where: [car_id: ^id, tenant_id: ^tenant_id],
+      order_by: [desc: :start_date],
+      limit: 1
+    )
     |> Repo.one()
   end
 
-  def insert_missed_update(%Car{id: id}, version, opts \\ []) do
+  def insert_missed_update(%Car{id: id, tenant_id: tenant_id}, version, opts \\ []) do
     date = Keyword.get(opts, :date) || DateTime.utc_now()
 
     %Update{car_id: id}
-    |> Update.changeset(%{start_date: date, end_date: date, version: version})
+    |> Update.changeset(%{
+      start_date: date,
+      end_date: date,
+      version: version,
+      tenant_id: tenant_id
+    })
     |> Repo.insert()
   end
 end

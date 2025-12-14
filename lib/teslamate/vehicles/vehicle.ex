@@ -1243,7 +1243,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
       vehicle_state = %VehicleState{
         odometer: position.odometer |> Convert.km_to_miles(6),
         car_version:
-          case call(data.deps.log, :get_latest_update, [data.car]) do
+          case call(data.deps.log, :get_latest_update, [data.car, data.deps.tenant_id]) do
             %Log.Update{version: version} -> version
             _ -> nil
           end
@@ -1621,7 +1621,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
   defp synchronize_updates(%Vehicle{vehicle_state: vehicle_state}, %Data{car: car} = data) do
     case vehicle_state do
       %VehicleState{timestamp: ts, car_version: vsn} when is_binary(vsn) ->
-        case call(data.deps.log, :get_latest_update, [car]) do
+        case call(data.deps.log, :get_latest_update, [car, data.deps.tenant_id]) do
           nil ->
             {:ok, _} =
               call(data.deps.log, :insert_missed_update, [car, vsn, [date: parse_timestamp(ts)]])
