@@ -10,6 +10,7 @@ defmodule TeslaMate.Repo.Migrations.AddTenantIdToDatabase do
     add_tenant_id_to_table(:states)
     add_tenant_id_to_table(:charges)
     add_tenant_id_to_table(:charging_processes)
+    add_tenant_id_to_table(:updates)
   end
 
   def down do
@@ -19,6 +20,7 @@ defmodule TeslaMate.Repo.Migrations.AddTenantIdToDatabase do
     remove_tenant_id_from_table(:states)
     remove_tenant_id_from_table(:charges)
     remove_tenant_id_from_table(:charging_processes)
+    remove_tenant_id_from_table(:updates)
   end
 
   defp add_tenant_id_to_table(table_name) do
