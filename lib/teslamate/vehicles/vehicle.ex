@@ -1676,6 +1676,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
       end
 
     call(data.deps.api, :stream, [
+      data.deps.tenant_id,
       id,
       fn stream_data -> send(me, {:stream, stream_data}) end
     ])
