@@ -683,11 +683,12 @@ defmodule TeslaMate.Log do
 
   ## Update
 
-  def start_update(%Car{id: id}, opts \\ []) do
+  def start_update(%Car{} = car, opts \\ []) do
+    id = car.id
     start_date = Keyword.get(opts, :date) || DateTime.utc_now()
 
     %Update{car_id: id}
-    |> Update.changeset(%{start_date: start_date})
+    |> Update.changeset(%{start_date: start_date, tenant_id: car.tenant_id})
     |> Repo.insert()
   end
 
