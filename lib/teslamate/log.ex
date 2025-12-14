@@ -66,7 +66,8 @@ defmodule TeslaMate.Log do
       %State{} = s ->
         Repo.transaction(fn ->
           with {:ok, _} <- s |> State.changeset(%{end_date: now}) |> Repo.update(),
-               {:ok, new_state} <- create_state(car, %{state: state, start_date: now}) do
+               {:ok, new_state} <-
+                 create_state(car, %{state: state, start_date: now, tenant_id: car.tenant_id}) do
             new_state
           else
             {:error, reason} -> Repo.rollback(reason)
@@ -74,7 +75,7 @@ defmodule TeslaMate.Log do
         end)
 
       nil ->
-        create_state(car, %{state: state, start_date: now})
+        create_state(car, %{state: state, start_date: now, tenant_id: car.tenant_id})
     end
   end
 
@@ -235,9 +236,9 @@ defmodule TeslaMate.Log do
 
   ## Drive
 
-  def start_drive(%Car{id: id}) do
-    %Drive{car_id: id}
-    |> Drive.changeset(%{start_date: DateTime.utc_now()})
+  def start_drive(%Car{} = car) do
+    %Drive{car_id: car.id}
+    |> Drive.changeset(%{start_date: DateTime.utc_now(), tenant_id: car.tenant_id})
     |> Repo.insert()
   end
 
