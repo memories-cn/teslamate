@@ -19,6 +19,7 @@ defmodule TeslaMate.Log.ChargingProcess do
     field :duration_min, :integer
     field :outside_temp_avg, :decimal, read_after_writes: true
     field :cost, :decimal, read_after_writes: true
+    field :tenant_id, Ecto.UUID
 
     belongs_to(:car, Car)
     belongs_to(:position, Position)
@@ -46,9 +47,10 @@ defmodule TeslaMate.Log.ChargingProcess do
       :end_battery_level,
       :duration_min,
       :outside_temp_avg,
-      :cost
+      :cost,
+      :tenant_id
     ])
-    |> validate_required([:car_id, :start_date])
+    |> validate_required([:car_id, :start_date, :tenant_id])
     |> validate_number(:charge_energy_added, greater_than_or_equal_to: 0)
     |> validate_number(:charge_energy_used, greater_than_or_equal_to: 0)
     |> foreign_key_constraint(:car_id)
