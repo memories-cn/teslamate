@@ -23,6 +23,8 @@ defmodule TeslaMate.Log.Drive do
     field :duration_min, :integer
     field :ascent, :integer
     field :descent, :integer
+    # 新增租户标识
+    field :tenant_id, Ecto.UUID
 
     belongs_to :start_position, Position
     belongs_to :end_position, Position
@@ -64,9 +66,10 @@ defmodule TeslaMate.Log.Drive do
       :distance,
       :duration_min,
       :ascent,
-      :descent
+      :descent,
+      :tenant_id
     ])
-    |> validate_required([:car_id, :start_date])
+    |> validate_required([:car_id, :start_date, :tenant_id])
     |> foreign_key_constraint(:car_id)
     |> foreign_key_constraint(:start_address_id)
     |> foreign_key_constraint(:end_address_id)

@@ -9,6 +9,8 @@ defmodule TeslaMate.Log.State do
 
     field :start_date, :utc_datetime_usec
     field :end_date, :utc_datetime_usec
+    # 新增租户标识
+    field :tenant_id, Ecto.UUID
 
     belongs_to(:car, Car)
   end
@@ -16,8 +18,8 @@ defmodule TeslaMate.Log.State do
   @doc false
   def changeset(state, attrs) do
     state
-    |> cast(attrs, [:state, :start_date, :end_date])
-    |> validate_required([:car_id, :state, :start_date])
+    |> cast(attrs, [:state, :start_date, :end_date, :tenant_id])
+    |> validate_required([:car_id, :state, :start_date, :tenant_id])
     |> foreign_key_constraint(:car_id)
     |> unique_constraint(:end_date,
       name: :states_car_id__end_date_IS_NULL_index,

@@ -6,11 +6,15 @@ defmodule TeslaMate.Repo.Migrations.AddTenantIdToDatabase do
   def up do
     add_tenant_id_to_table(:cars)
     add_tenant_id_to_table(:positions)
+    add_tenant_id_to_table(:drives)
+    add_tenant_id_to_table(:states)
   end
 
   def down do
     remove_tenant_id_from_table(:cars)
     remove_tenant_id_from_table(:positions)
+    remove_tenant_id_from_table(:drives)
+    remove_tenant_id_from_table(:states)
   end
 
   defp add_tenant_id_to_table(table_name) do
