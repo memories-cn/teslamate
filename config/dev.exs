@@ -28,4 +28,6 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :teslamate, TeslaMate.Repo, show_sensitive_data_on_connection_error: true
-config :teslamate, disable_token_refresh: true
+config :teslamate, disable_token_refresh: false
+
+config :teslamate, TeslaMate.TokenScanner, interval: :timer.minutes(1)

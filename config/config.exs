@@ -26,4 +26,7 @@ config :gettext, :default_locale, "en"
 
 config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
 
+# Configures the token scanner
+config :teslamate, TeslaMate.TokenScanner, interval: :timer.minutes(5)
+
 import_config "#{config_env()}.exs"
