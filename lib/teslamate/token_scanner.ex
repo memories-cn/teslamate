@@ -71,6 +71,13 @@ defmodule TeslaMate.TokenScanner do
       # 查找新的租户（存在于tokens表但尚未启动的）
       new_tenants = tenant_ids -- active_tenants
 
+      # 查找需要停止的租户（已启动但不再存在于tokens表中的）
+      tenants_to_stop = active_tenants -- tenant_ids
+
+      Logger.info(
+        "[token_scanner] Found #{length(new_tenants)} new tenant(s), readying for starting tenant processes"
+      )
+
       # 为新租户启动Tenants子进程
       Enum.each(new_tenants, fn tenant_id ->
         Logger.info("Detected new tenant: #{tenant_id}, starting tenant processes")
@@ -84,6 +91,20 @@ defmodule TeslaMate.TokenScanner do
 
           {:error, reason} ->
             Logger.error("Failed to start tenant #{tenant_id}: #{inspect(reason)}")
+        end
+      end)
+
+      Logger.info("[token_scanner] Found #{length(tenants_to_stop)} tenant(s) need to stop")
+      # 停止不再需要的租户
+      Enum.each(tenants_to_stop, fn tenant_id ->
+        Logger.info("Stopping tenant: #{tenant_id}, not found in tokens table")
+
+        case Tenants.stop_tenant(tenant_id) do
+          :ok ->
+            Logger.info("Successfully stopped tenant processes for #{tenant_id}")
+
+          {:error, reason} ->
+            Logger.error("Failed to stop tenant #{tenant_id}: #{inspect(reason)}")
         end
       end)
 
