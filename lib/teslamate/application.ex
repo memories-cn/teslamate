@@ -35,7 +35,8 @@ defmodule TeslaMate.Application do
           # TeslaMate.Vehicles,
           # if(mqtt_config != nil, do: {TeslaMate.Mqtt, mqtt_config}),
           TeslaMate.Repair,
-          TeslaMate.TokenScanner
+          TeslaMate.TokenScanner,
+          TeslaMate.Listeners.TokenListener
         ]
         |> Enum.reject(&is_nil/1)
 
@@ -53,7 +54,8 @@ defmodule TeslaMate.Application do
           {TeslaMate.Terrain, disabled: true},
           {TeslaMate.Repair, limit: 250},
           {TeslaMate.Import, directory: import_directory},
-          TeslaMate.TokenScanner
+          TeslaMate.TokenScanner,
+          TeslaMate.Listeners.TokenListener
         ]
     end
   end
