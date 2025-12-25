@@ -160,6 +160,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
   @impl true
   def init(opts) do
     %Car{settings: %CarSettings{}} = car = Keyword.fetch!(opts, :car)
+    tenant_id = Keyword.fetch!(opts, :tenant_id)
 
     deps = %{
       log: Keyword.get(opts, :deps_log, Log),
@@ -167,7 +168,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       settings: Keyword.get(opts, :deps_settings, Settings),
       locations: Keyword.get(opts, :deps_locations, Locations),
       vehicles: Keyword.get(opts, :deps_vehicles, Vehicles),
-      pubsub: Keyword.get(opts, :deps_pubsub, Phoenix.PubSub)
+      pubsub: Keyword.get(opts, :deps_pubsub, Phoenix.PubSub),
+      tenant_id: tenant_id
     }
 
     last_state_change =
@@ -683,7 +685,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
   def handle_event(:internal, :fetch_state, _state, %Data{car: car} = data) do
     Task.async(fn ->
       with {:ok, %Vehicle{state: state} = vehicle} when is_binary(state) <-
-             call(data.deps.api, :get_vehicle, [car.eid]) do
+             call(data.deps.api, :get_vehicle, [data.deps.tenant_id, car.eid]) do
         {String.to_existing_atom(state), vehicle}
       end
     end)
@@ -1241,7 +1243,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
       vehicle_state = %VehicleState{
         odometer: position.odometer |> Convert.km_to_miles(6),
         car_version:
-          case call(data.deps.log, :get_latest_update, [data.car]) do
+          case call(data.deps.log, :get_latest_update, [data.car, data.deps.tenant_id]) do
             %Log.Update{version: version} -> version
             _ -> nil
           end
@@ -1284,21 +1286,22 @@ defmodule TeslaMate.Vehicles.Vehicle do
   end
 
   defp fetch_with_reachable_assumption(id, deps) do
-    with {:error, :vehicle_unavailable} <- call(deps.api, :get_vehicle_with_state, [id]) do
-      call(deps.api, :get_vehicle, [id])
+    with {:error, :vehicle_unavailable} <-
+           call(deps.api, :get_vehicle_with_state, [deps.tenant_id, id]) do
+      call(deps.api, :get_vehicle, [deps.tenant_id, id])
     end
   end
 
   defp fetch_with_unreachable_assumption(id, deps) do
-    with {:ok, %Vehicle{state: "online"}} <- call(deps.api, :get_vehicle, [id]) do
-      call(deps.api, :get_vehicle_with_state, [id])
+    with {:ok, %Vehicle{state: "online"}} <- call(deps.api, :get_vehicle, [deps.tenant_id, id]) do
+      call(deps.api, :get_vehicle_with_state, [deps.tenant_id, id])
     end
   end
 
   defp fetch_strict(id, deps) do
     alias Vehicle, as: V
 
-    case call(deps.api, :get_vehicle_with_state, [id]) do
+    case call(deps.api, :get_vehicle_with_state, [deps.tenant_id, id]) do
       {:ok, %V{drive_state: %Drive{}, charge_state: %Charge{}, climate_state: %Climate{}} = v} ->
         {:ok, v}
 
@@ -1342,7 +1345,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       tpms_pressure_fl: vehicle.vehicle_state.tpms_pressure_fl,
       tpms_pressure_fr: vehicle.vehicle_state.tpms_pressure_fr,
       tpms_pressure_rl: vehicle.vehicle_state.tpms_pressure_rl,
-      tpms_pressure_rr: vehicle.vehicle_state.tpms_pressure_rr
+      tpms_pressure_rr: vehicle.vehicle_state.tpms_pressure_rr,
+      tenant_id: car.tenant_id
     }
 
     elevation =
@@ -1354,7 +1358,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
     Map.put(position, :elevation, elevation)
   end
 
-  defp create_position(%Stream.Data{} = stream_data, %Data{}) do
+  defp create_position(%Stream.Data{} = stream_data, %Data{} = data) do
     %{
       date: stream_data.time,
       latitude: stream_data.est_lat,
@@ -1363,7 +1367,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       speed: Convert.mph_to_kmh(stream_data.speed),
       battery_level: stream_data.soc,
       elevation: stream_data.elevation,
-      odometer: Convert.miles_to_km(stream_data.odometer, 6)
+      odometer: Convert.miles_to_km(stream_data.odometer, 6),
+      tenant_id: data.deps.tenant_id
     }
   end
 
@@ -1388,7 +1393,8 @@ defmodule TeslaMate.Vehicles.Vehicle do
       ideal_battery_range_km: Convert.miles_to_km(vehicle.charge_state.ideal_battery_range, 2),
       rated_battery_range_km: Convert.miles_to_km(vehicle.charge_state.battery_range, 2),
       not_enough_power_to_heat: vehicle.charge_state.not_enough_power_to_heat,
-      outside_temp: vehicle.climate_state.outside_temp
+      outside_temp: vehicle.climate_state.outside_temp,
+      tenant_id: data.deps.tenant_id
     }
 
     case call(data.deps.log, :insert_charge, [charging_process, attrs]) do
@@ -1615,7 +1621,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
   defp synchronize_updates(%Vehicle{vehicle_state: vehicle_state}, %Data{car: car} = data) do
     case vehicle_state do
       %VehicleState{timestamp: ts, car_version: vsn} when is_binary(vsn) ->
-        case call(data.deps.log, :get_latest_update, [car]) do
+        case call(data.deps.log, :get_latest_update, [car, data.deps.tenant_id]) do
           nil ->
             {:ok, _} =
               call(data.deps.log, :insert_missed_update, [car, vsn, [date: parse_timestamp(ts)]])
@@ -1673,6 +1679,7 @@ defmodule TeslaMate.Vehicles.Vehicle do
       end
 
     call(data.deps.api, :stream, [
+      data.deps.tenant_id,
       id,
       fn stream_data -> send(me, {:stream, stream_data}) end
     ])

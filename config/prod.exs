@@ -12,3 +12,6 @@ config :logger,
 config :logger, :console,
   format: "$date $time $metadata[$level] $message\n",
   metadata: [:car_id]
+
+# Token scanner interval in production
+config :teslamate, TeslaMate.TokenScanner, interval: :timer.minutes(10)
