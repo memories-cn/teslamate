@@ -3,7 +3,6 @@ defmodule TeslaMate.Api do
 
   require Logger
 
-  alias ElixirSense.Log
   alias TeslaMate.Auth.Tokens
   alias TeslaMate.{Vehicles, Convert}
   alias TeslaApi.Auth
