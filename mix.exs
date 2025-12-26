@@ -13,8 +13,13 @@ defmodule TeslaMate.MixProject do
       releases: releases(),
       deps: deps(),
       dialyzer: dialyzer(),
-      test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
+      test_coverage: [tool: ExCoveralls]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
         coveralls: :test,
         "coveralls.detail": :test,
         "coveralls.post": :test,
@@ -43,7 +48,7 @@ defmodule TeslaMate.MixProject do
       {:ex_cldr_plugs, "~> 1.0"},
       {:excoveralls, "~> 0.18.5", only: :test},
       {:finch, "~> 0.3"},
-      {:floki, "~> 0.23"},
+      {:floki, "~> 0.38"},
       {:fuse, "~> 2.4"},
       {:gen_state_machine, "~> 3.0"},
       {:gettext, "~> 0.11"},
