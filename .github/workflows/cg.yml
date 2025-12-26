@@ -5,8 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - "release/**"
-      - "releases/**"
+      - release
 
 jobs:
   delete-runs:
