@@ -1,35 +1,47 @@
-name: Build & Push Image (Release, Multi-Arch)
+name: Publish Docker images
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
   push:
-    branches:
-      - release
+    tags:
+      - "v*"
+    paths:
+      - "**/*"
+      - "!.github/**"
+      - "!.github/workflows/**"
+      - "!.github/actions/**"
+
+env:
+  REGISTRY_IMAGE: teslamate/teslamate
 
 permissions:
   contents: read
-
-env:
-  REGISTRY: registry.cn-hangzhou.aliyuncs.com
-  NAMESPACE: memories
-  IMAGE: teslamate
+  packages: write
 
 jobs:
-  # -----------------------------
-  # 架构矩阵构建
-  # -----------------------------
-  build:
-    runs-on: ubuntu-latest
+  teslamate_build:
     strategy:
+      fail-fast: false
       matrix:
-        arch: [amd64, arm64]
-    outputs:
-      image-amd64: ${{ steps.build.outputs.image-amd64 }}
-      image-arm64: ${{ steps.build.outputs.image-arm64 }}
-      image-sha-amd64: ${{ steps.build.outputs.image-sha-amd64 }}
-      image-sha-arm64: ${{ steps.build.outputs.image-sha-arm64 }}
+        include:
+          - platform: "linux/amd64"
+            runs_on: "ubuntu-24.04"
+            arch_tag: "amd64"
+          - platform: "linux/arm/v7"
+            runs_on: "buildjet-2vcpu-ubuntu-2204-arm"
+            arch_tag: "armv7"
+          - platform: "linux/arm64"
+            runs_on: "buildjet-2vcpu-ubuntu-2204-arm"
+            arch_tag: "arm64"
+
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -37,58 +49,53 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to ACR
-        run: |
-          echo "${{ secrets.ALIYUN_ACR_PASSWORD }}" | \
-          docker login \
-            --username="${{ secrets.ALIYUN_ACR_USERNAME }}" \
-            --password-stdin \
-            ${{ env.REGISTRY }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build & Push
+      - name: Build & Push Docker Image
         id: build
         run: |
-          # Release tag
-          RELEASE_TAG=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:release-${{ matrix.arch }}
-          # Commit SHA tag
-          SHA_TAG=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:${{ github.sha }}-${{ matrix.arch }}
+          IMAGE_TAG=${{ env.REGISTRY_IMAGE }}:release-${{ matrix.arch_tag }}
+          SHA_TAG=${{ env.REGISTRY_IMAGE }}:${{ github.sha }}-${{ matrix.arch_tag }}
 
           docker buildx build \
-            --platform linux/${{ matrix.arch }} \
-            -t $RELEASE_TAG \
+            --platform ${{ matrix.platform }} \
+            -t $IMAGE_TAG \
             -t $SHA_TAG \
             --push \
             .
 
-          # 输出给 manifest job 使用
-          echo "image-${{ matrix.arch }}=$RELEASE_TAG" >> $GITHUB_OUTPUT
-          echo "image-sha-${{ matrix.arch }}=$SHA_TAG" >> $GITHUB_OUTPUT
+          echo "image-${{ matrix.arch_tag }}=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "image-sha-${{ matrix.arch_tag }}=$SHA_TAG" >> $GITHUB_OUTPUT
 
-  # -----------------------------
-  # 合并 multi-arch manifest
-  # -----------------------------
-  manifest:
-    needs: build
-    runs-on: ubuntu-latest
+  teslamate_merge:
+    needs: teslamate_build
+    runs-on: ubuntu-24.04
     steps:
-      - name: Login to ACR
-        run: |
-          echo "${{ secrets.ALIYUN_ACR_PASSWORD }}" | \
-          docker login \
-            --username="${{ secrets.ALIYUN_ACR_USERNAME }}" \
-            --password-stdin \
-            ${{ env.REGISTRY }}
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Create multi-arch release manifest
         run: |
           docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:release \
-            ${{ needs.build.outputs.image-amd64 }} \
-            ${{ needs.build.outputs.image-arm64 }}
+            -t ${{ env.REGISTRY_IMAGE }}:release \
+            ${{ needs.teslamate_build.outputs.image-amd64 }} \
+            ${{ needs.teslamate_build.outputs.image-armv7 }} \
+            ${{ needs.teslamate_build.outputs.image-arm64 }}
 
       - name: Create multi-arch commit SHA manifest
         run: |
           docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:${{ github.sha }} \
-            ${{ needs.build.outputs.image-sha-amd64 }} \
-            ${{ needs.build.outputs.image-sha-arm64 }}
+            -t ${{ env.REGISTRY_IMAGE }}:${{ github.sha }} \
+            ${{ needs.teslamate_build.outputs.image-sha-amd64 }} \
+            ${{ needs.teslamate_build.outputs.image-sha-armv7 }} \
+            ${{ needs.teslamate_build.outputs.image-sha-arm64 }}
