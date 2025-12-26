@@ -9,9 +9,6 @@ on:
       - "v*"
     paths:
       - "**/*"
-      - "!.github/**"
-      - "!.github/workflows/**"
-      - "!.github/actions/**"
 
 env:
   REGISTRY_IMAGE: teslamate/teslamate
