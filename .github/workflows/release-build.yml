@@ -38,7 +38,7 @@ jobs:
           SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
           docker buildx build \
             --platform linux/amd64 \
-            -t ${{ env.REGISTRY_IMAGE }}:release \
-            -t ${{ env.REGISTRY_IMAGE }}:release-$SHORT_SHA \
+            -t ${{ env.REGISTRY_IMAGE }}:latest \
+            -t ${{ env.REGISTRY_IMAGE }}:latest-$SHORT_SHA \
             --push \
             .
