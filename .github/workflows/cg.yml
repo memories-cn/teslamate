@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - release
-      - main
 
 jobs:
   delete-runs:
