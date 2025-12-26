@@ -10,7 +10,7 @@ env:
   REGISTRY: registry.cn-hangzhou.aliyuncs.com
   NAMESPACE: memories
   IMAGE: teslamate
-  REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ env.NAMESPACE } }/${{ env.IMAGE }}
+  REGISTRY_IMAGE: registry.cn-hangzhou.aliyuncs.com/memories/teslamate
 
 permissions:
   contents: read
