@@ -1,14 +1,9 @@
-name: Publish Docker images
-
+name: Build & Push Image (Release, Multi-Arch)
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 3 * * *"
   push:
-    tags:
-      - "v*"
-    paths:
-      - "**/*"
+    branches:
+      - release
 
 env:
   REGISTRY_IMAGE: teslamate/teslamate
