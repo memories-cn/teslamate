@@ -15,9 +15,19 @@ env:
   IMAGE: teslamate
 
 jobs:
+  # -----------------------------
+  # 架构矩阵构建
+  # -----------------------------
   build:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    outputs:
+      image-amd64: ${{ steps.build.outputs.image-amd64 }}
+      image-arm64: ${{ steps.build.outputs.image-arm64 }}
+      image-sha-amd64: ${{ steps.build.outputs.image-sha-amd64 }}
+      image-sha-arm64: ${{ steps.build.outputs.image-sha-arm64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,10 +46,49 @@ jobs:
             ${{ env.REGISTRY }}
 
       - name: Build & Push
+        id: build
         run: |
+          # Release tag
+          RELEASE_TAG=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:release-${{ matrix.arch }}
+          # Commit SHA tag
+          SHA_TAG=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:${{ github.sha }}-${{ matrix.arch }}
+
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:release \
-            -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:${{ github.sha }} \
+            --platform linux/${{ matrix.arch }} \
+            -t $RELEASE_TAG \
+            -t $SHA_TAG \
             --push \
             .
+
+          # 输出给 manifest job 使用
+          echo "image-${{ matrix.arch }}=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "image-sha-${{ matrix.arch }}=$SHA_TAG" >> $GITHUB_OUTPUT
+
+  # -----------------------------
+  # 合并 multi-arch manifest
+  # -----------------------------
+  manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to ACR
+        run: |
+          echo "${{ secrets.ALIYUN_ACR_PASSWORD }}" | \
+          docker login \
+            --username="${{ secrets.ALIYUN_ACR_USERNAME }}" \
+            --password-stdin \
+            ${{ env.REGISTRY }}
+
+      - name: Create multi-arch release manifest
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:release \
+            ${{ needs.build.outputs.image-amd64 }} \
+            ${{ needs.build.outputs.image-arm64 }}
+
+      - name: Create multi-arch commit SHA manifest
+        run: |
+          docker buildx imagetools create \
+            -t ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/${{ env.IMAGE }}:${{ github.sha }} \
+            ${{ needs.build.outputs.image-sha-amd64 }} \
+            ${{ needs.build.outputs.image-sha-arm64 }}
