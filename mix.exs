@@ -48,7 +48,7 @@ defmodule TeslaMate.MixProject do
       {:ex_cldr_plugs, "~> 1.0"},
       {:excoveralls, "~> 0.18.5", only: :test},
       {:finch, "~> 0.3"},
-      {:floki, "~> 0.38"},
+      {:floki, "~> 0.38.0"},
       {:fuse, "~> 2.4"},
       {:gen_state_machine, "~> 3.0"},
       {:gettext, "~> 0.11"},
