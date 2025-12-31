@@ -10,14 +10,14 @@ defmodule TeslaMate.HTTPTest do
   test "no env -> nominatim has only size: 3" do
     System.delete_env("NOMINATIM_PROXY")
     pools = TeslaMate.HTTP.pools()
-    assert pools["https://nominatim.openstreetmap.org"] == [size: 3]
+    assert pools["http://nominatim:8080"] == [size: 3]
   end
 
   test "valid http proxy -> nominatim has conn_opts" do
     System.put_env("NOMINATIM_PROXY", "http://127.0.0.1:7890")
     pools = TeslaMate.HTTP.pools()
 
-    assert pools["https://nominatim.openstreetmap.org"] ==
+    assert pools["http://nominatim:8080"] ==
              [size: 3, conn_opts: [proxy: {:http, "127.0.0.1", 7890, []}]]
   end
 
@@ -26,7 +26,7 @@ defmodule TeslaMate.HTTPTest do
       capture_log(fn ->
         System.put_env("NOMINATIM_PROXY", "socks5://127.0.0.1:1080")
         pools = TeslaMate.HTTP.pools()
-        assert pools["https://nominatim.openstreetmap.org"] == [size: 3]
+        assert pools["http://nominatim:8080"] == [size: 3]
       end)
 
     assert log =~ "unsupported scheme"
