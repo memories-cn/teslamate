@@ -45,6 +45,7 @@ defmodule TeslaMate.Repair do
         :id,
         :car_id,
         :start_date,
+        :tenant_id,
         {:start_position, [:id, :latitude, :longitude]},
         {:end_position, [:id, :latitude, :longitude]}
       ],
@@ -60,7 +61,7 @@ defmodule TeslaMate.Repair do
 
     from(c in ChargingProcess,
       join: p in assoc(c, :position),
-      select: [:id, :car_id, :start_date, {:position, [:id, :latitude, :longitude]}],
+      select: [:id, :car_id, :start_date, :tenant_id, {:position, [:id, :latitude, :longitude]}],
       where: is_nil(c.address_id) and not is_nil(c.position_id),
       order_by: [desc: :id],
       preload: [position: p],
@@ -95,7 +96,8 @@ defmodule TeslaMate.Repair do
         drive
         |> Drive.changeset(%{
           start_address_id: get_address_id(drive.start_position),
-          end_address_id: get_address_id(drive.end_position)
+          end_address_id: get_address_id(drive.end_position),
+          tenant_id: drive.tenant_id
         })
         |> Repo.update()
 
@@ -103,7 +105,10 @@ defmodule TeslaMate.Repair do
         Logger.info("Repairing charging process ##{charge.id} ...")
 
         charge
-        |> ChargingProcess.changeset(%{address_id: get_address_id(charge.position)})
+        |> ChargingProcess.changeset(%{
+          address_id: get_address_id(charge.position),
+          tenant_id: charge.tenant_id
+        })
         |> Repo.update()
     end
     |> case do
