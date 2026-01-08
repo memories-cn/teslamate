@@ -12,12 +12,13 @@
     "@docusaurus/core": "^3.9.2",
     "@docusaurus/preset-classic": "^3.9.2",
     "classnames": "^2.5.1",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "overrides": {
     "webpack-dev-server": "^5.2.1",
-    "node-forge": "^1.3.3"
+    "node-forge": "^1.3.3",
+    "qs": "^6.14.1"
   },
   "browserslist": {
     "production": [

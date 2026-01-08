@@ -18,8 +18,16 @@
 - build(deps): bump express from 4.21.2 to 4.22.1 in /website (#5060)
 - build(deps): update flake.lock (#5027)
 - fix(website): Bump node-forge to 1.3.3 to resolve CVE-2025-12816, CVE-2025-66030 and CVE-2025-66031 (#5071 - @JakobLichterfeld)
+- chore(website): bump qs to fix CVE-2025-15284 (#5091 - @JakobLichterfeld)
+- build(deps): bump react and react-dom from 19.2.0 to 19.2.3 in /website (#5084)
+- build(deps): bump nix-community/cache-nix-action from 6.1.3 to 7.0.0 (#5082)
+- build(deps): bump actions/cache from 4.3.0 to 5.0.1 (#5077)
+- build(deps): bump crate-ci/typos from 1.40.0 to 1.41.0 (#5079)
+- build(deps): bump actions/stale from 10.1.0 to 10.1.1 (#5080)
 
 #### Dashboards
+
+- feat(overview): show battery heating on overview dashboard as well (#5090 - @kaistian)
 
 #### Translations
 
@@ -27,6 +35,8 @@
 
 - docs(traefik): update to v3.6 as 3.6.1 solves issues with docker 29.0 (#5034 - @JakobLichterfeld)
 - docs: fix the formatting of the `DATABASE_SOCKET_DIR` description (#5026 - @IngmarStein)
+- docs: fix external image rendering with Traefik SSL (#5074 - @swiffer)
+- docs(home_assistant): default tesla_active_route_distance_to_arrival sensor to kilometers (#5086 - @kenni)
 
 ## [2.2.0] - 2025-11-06
 
