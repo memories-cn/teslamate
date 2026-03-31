@@ -1,10 +1,8 @@
 defmodule TeslaMate.Listeners.TokenListener do
   use GenServer
   require Logger
-  import Ecto.Query, only: [from: 2]
 
-  alias TeslaMate.{Repo, Auth}
-  alias TeslaMate.Auth.Tokens
+  alias TeslaMate.Repo
 
   defmodule State do
     defstruct [:pid, :ref, :channel, :tenant_manager]

@@ -36,10 +36,10 @@ defmodule TeslaMate.Auth do
   """
   def can_decrypt_tokens?(tenant_id) do
     case get_tokens(tenant_id) do
-      %Tokens{} = tokens ->
+      {:ok, %Tokens{} = tokens} ->
         is_binary(tokens.access) and is_binary(tokens.refresh)
 
-      nil ->
+      {:error, :not_found} ->
         true
     end
   end

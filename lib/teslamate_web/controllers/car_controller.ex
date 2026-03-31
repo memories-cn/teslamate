@@ -46,7 +46,7 @@ defmodule TeslaMateWeb.CarController do
 
   case Mix.env() do
     :test -> defp fetch_signed_in(conn, _opts), do: conn
-    _ -> defp fetch_signed_in(conn, _opts), do: assign(conn, :signed_in?, Api.signed_in?())
+    _ -> defp fetch_signed_in(conn, _opts), do: assign(conn, :signed_in?, Api.signed_in?(conn))
   end
 
   defp redirect_if_importing(conn, _) do

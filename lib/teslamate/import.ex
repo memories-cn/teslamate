@@ -3,10 +3,12 @@ defmodule TeslaMate.Import do
 
   require Logger
 
+  import Ecto.Query, warn: false
+
   alias TeslaMate.Settings.CarSettings
   alias TeslaMate.Vehicles.Vehicle
   alias TeslaMate.{Vehicles, Repair, Log}
-  alias TeslaMate.Log.{Car, State}
+  alias TeslaMate.Log.State
 
   alias __MODULE__.{Status, LineParser, FakeApi, CSV}
 
@@ -278,15 +280,24 @@ defmodule TeslaMate.Import do
 
   defp create_car([{_date, %Stream{} = stream} | rest]) do
     alias TeslaApi.Vehicle, as: Veh
+    alias TeslaMate.Log
 
-    stream
-    |> Enum.find(fn %Veh{} = v -> v.vin != nil and v.vehicle_id != nil and v.id != nil end)
-    |> case do
+    # 查找第一辆完整的车辆记录
+    case Enum.find(stream, fn %Veh{} = v ->
+           v.vin != nil and v.vehicle_id != nil and v.id != nil
+         end) do
       nil ->
         create_car(rest)
 
       vehicle ->
-        car = Vehicles.create_or_update!(vehicle)
+        # 检查车辆是否已存在，如果存在则使用原有租户 ID，否则使用当前有效的租户 ID
+        tenant_id =
+          case Log.get_car_by(vin: vehicle.vin) do
+            nil -> get_current_tenant_id()
+            existing_car -> existing_car.tenant_id
+          end
+
+        car = Vehicles.create_or_update!(vehicle, tenant_id)
 
         settings = %CarSettings{
           suspend_min: 0,
@@ -295,7 +306,23 @@ defmodule TeslaMate.Import do
           enabled: true
         }
 
-        %Car{car | settings: settings}
+        %Log.Car{car | settings: settings}
+    end
+  end
+
+  # 获取当前有有效访问令牌的租户 ID
+  defp get_current_tenant_id do
+    alias TeslaMate.Repo
+    alias TeslaMate.Auth.Tokens
+
+    case Repo.one(
+           from t in Tokens,
+             where: not is_nil(t.access) and t.access != "",
+             select: t.tenant_id,
+             limit: 1
+         ) do
+      nil -> raise "no active tenant with valid access token found for import"
+      tenant_id -> tenant_id
     end
   end
 end

@@ -358,50 +358,18 @@ defmodule TeslaMate.Api do
     {:ok, %State{state | refresh_timer: refresh_timer}}
   end
 
-  @doc """
-  根据租户ID生成ETS表名
-
-  ## 参数
-
-  - `tenant_id`: 租户唯一标识符
-
-  ## 返回值
-
-  返回一个原子类型的ETS表名，格式为`:api_{tenant_id}`
-  """
+  @doc false
   defp ets_table_name(tenant_id) do
     String.to_atom("api_#{tenant_id}")
   end
 
-  @doc """
-  将认证信息插入到ETS表中
-
-  ## 参数
-
-  - `tenant_id`: 租户唯一标识符，用于确定ETS表
-  - `auth`: 包含认证信息的Auth结构体
-
-  ## 返回值
-
-  返回`:ets.insert/2`函数的结果
-  """
+  @doc false
   defp insert_auth(tenant_id, %Auth{} = auth) do
     table_name = ets_table_name(tenant_id)
     :ets.insert(table_name, {:auth, auth})
   end
 
-  @doc """
-  从ETS表中获取认证信息
-
-  ## 参数
-
-  - `tenant_id`: 租户唯一标识符，用于确定ETS表
-
-  ## 返回值
-
-  - `{:ok, auth}`: 成功获取认证信息
-  - `{:error, :not_signed_in}`: 未找到认证信息或发生ArgumentError异常
-  """
+  @doc false
   defp fetch_auth(tenant_id) do
     table_name = ets_table_name(tenant_id)
 

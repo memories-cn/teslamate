@@ -13,7 +13,7 @@ defmodule TeslaMateWeb.CarLive.Index do
     socket =
       socket
       |> assign(page_title: gettext("Home"))
-      |> assign_new(:summaries, fn -> Vehicles.list() end)
+      |> assign_new(:summaries, fn -> Vehicles.list(settings.tenant_id) end)
       |> assign_new(:settings, fn -> update_base_url(settings, socket) end)
 
     {:ok, socket}

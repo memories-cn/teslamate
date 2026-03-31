@@ -41,7 +41,7 @@ defmodule TeslaMate.Vehicles do
 
   def kill(tenant_id) do
     name = via_tuple(tenant_id)
-    Logger.warning("Restarting #{name} supervisor")
+    Logger.warning("Restarting #{inspect(name)} supervisor")
     pid = Registry.whereis_name({TeslaMate.Registry, {__MODULE__, tenant_id}})
 
     case pid do

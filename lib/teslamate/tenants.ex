@@ -4,7 +4,7 @@ defmodule TeslaMate.Tenants do
   require Logger
   import Ecto.Query, warn: false
 
-  alias TeslaMate.{Auth, Repo}
+  alias TeslaMate.Repo
   alias TeslaMate.Auth.Tokens
 
   @name __MODULE__

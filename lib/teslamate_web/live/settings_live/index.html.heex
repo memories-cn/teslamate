@@ -406,7 +406,7 @@
   </div>
 </div>
 
-<%= if TeslaMate.Api.signed_in?() and not TeslaMate.Import.enabled?() do %>
+<%= if TeslaMate.Api.signed_in?(assigns.conn) and not TeslaMate.Import.enabled?() do %>
   <div class="columns is-mobile is-centered">
     <div class="column is-narrow table-container">
       <button class="button is-text is-rounded" aria-label="sign out" phx-click="sign_out">

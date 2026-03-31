@@ -132,7 +132,7 @@
     >
       <div class="container">
         <%= if not TeslaMate.Vault.encryption_key_provided?() or
-              (not TeslaMate.Api.signed_in?() and not TeslaMate.Auth.can_decrypt_tokens?()) do %>
+              (not TeslaMate.Api.signed_in?(assigns.conn) and not TeslaMate.Auth.can_decrypt_tokens?(assigns.settings.tenant_id)) do %>
           <% docs_link =
             link("docs.teslamate.org",
               to: "https://docs.teslamate.org",
